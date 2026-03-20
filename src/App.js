@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 function App() {
-  const API = "http://127.0.0.1:8000";
+  const API = "https://ai-interviewer-backend-7gxf.onrender.com/";
 
   const [cvText, setCvText] = useState("");
   const [messages, setMessages] = useState([]);
