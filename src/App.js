@@ -4,7 +4,7 @@ import axios from "axios";
 function App() {
   // Backend API URL
   // Use localhost for development, Render for production
-  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-7gxf.onrender.com";
+  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-gbkc.onrender.com/";
 
   const [cvText, setCvText] = useState("");
   const [messages, setMessages] = useState([]);
