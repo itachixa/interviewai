@@ -12,9 +12,8 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
 
-  const [typing, setTyping] = useState(false);
+  const [typing, setTyping] = useState(false); // 🔹 now used
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
-
   const [listening, setListening] = useState(false);
 
   const chatEndRef = useRef(null);
@@ -29,7 +28,11 @@ function App() {
   const speak = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
     setAvatarSpeaking(true);
-    utterance.onend = () => setAvatarSpeaking(false);
+
+    utterance.onend = () => {
+      setAvatarSpeaking(false);
+    };
+
     speechSynthesis.speak(utterance);
   };
 
@@ -40,20 +43,24 @@ function App() {
 
     for (let i = 0; i < text.length; i++) {
       displayed += text[i];
+      const temp = displayed; // 🔹 Fix ESLint no-loop-func
 
-      // ⚡ Fix no-loop-func by using callback
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === "ai_typing") {
-          return [...prev.slice(0, -1), { role: "ai_typing", text: displayed }];
+          return [...prev.slice(0, -1), { role: "ai_typing", text: temp }];
         }
-        return [...prev, { role: "ai_typing", text: displayed }];
+        return [...prev, { role: "ai_typing", text: temp }];
       });
 
       await new Promise((res) => setTimeout(res, 15));
     }
 
-    setMessages((prev) => [...prev.slice(0, -1), { role: "ai", text }]);
+    setMessages((prev) => [
+      ...prev.slice(0, -1),
+      { role: "ai", text },
+    ]);
+
     setTyping(false);
     speak(text);
   };
@@ -66,22 +73,18 @@ function App() {
 
     const res = await axios.post(`${API}/upload-cv`, formData);
     setCvText(res.data.cv_text);
+
     alert("✅ CV uploaded!");
   };
 
   // 🚀 START INTERVIEW
   const startInterview = async () => {
-    if (!cvText) {
-      alert("Upload CV first!");
-      return;
-    }
     const res = await axios.post(`${API}/questions`, { cv_text: cvText });
+
     setQuestions(res.data.questions);
     setCurrentIndex(0);
 
-    if (res.data.questions.length > 0) {
-      await typeMessage(res.data.questions[0]);
-    }
+    await typeMessage(res.data.questions[0]);
   };
 
   // 💬 SEND ANSWER
@@ -96,6 +99,7 @@ function App() {
     await typeMessage(res.data.feedback);
 
     const nextIndex = currentIndex + 1;
+
     if (nextIndex < questions.length) {
       setCurrentIndex(nextIndex);
       await typeMessage(questions[nextIndex]);
@@ -110,8 +114,13 @@ function App() {
 
   // 🎤 START MICRO
   const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return alert("Speech recognition not supported");
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech recognition not supported");
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -138,7 +147,9 @@ function App() {
   };
 
   // 🗑 CLEAR INPUT
-  const clearInput = () => setInput("");
+  const clearInput = () => {
+    setInput("");
+  };
 
   return (
     <div style={styles.container}>
@@ -158,6 +169,7 @@ function App() {
 
       {/* 📄 CV */}
       <input type="file" onChange={handleUpload} style={{ margin: 10 }} />
+
       <button onClick={startInterview} style={styles.startBtn}>
         Start Interview
       </button>
@@ -187,6 +199,7 @@ function App() {
           style={styles.input}
           placeholder="Type or speak..."
         />
+
         {!listening ? (
           <button onClick={startListening} style={styles.micBtn}>
             🎤
@@ -196,9 +209,11 @@ function App() {
             ⏹
           </button>
         )}
+
         <button onClick={clearInput} style={styles.clearBtn}>
           ❌
         </button>
+
         <button onClick={sendMessage} style={styles.sendBtn}>
           ➤
         </button>
@@ -208,18 +223,100 @@ function App() {
 }
 
 const styles = {
-  container: { background: "#0b1120", color: "white", height: "100vh", display: "flex", flexDirection: "column", padding: 10 },
-  avatarBox: { display: "flex", justifyContent: "center", margin: 10 },
-  avatar: { fontSize: 50, transition: "0.3s" },
-  startBtn: { margin: "10px auto", padding: 10, background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
-  chat: { flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 10 },
-  msg: { padding: 12, borderRadius: 10, maxWidth: "70%" },
-  inputBox: { display: "flex", padding: 10, background: "#020617", position: "sticky", bottom: 0 },
-  input: { flex: 1, padding: 10, borderRadius: 8, border: "none" },
-  sendBtn: { marginLeft: 10, padding: "0 15px", background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
-  micBtn: { marginLeft: 5, padding: "0 10px", background: "#111827", border: "none", color: "white", borderRadius: 8 },
-  stopBtn: { marginLeft: 5, padding: "0 10px", background: "#dc2626", border: "none", color: "white", borderRadius: 8 },
-  clearBtn: { marginLeft: 5, padding: "0 10px", background: "#374151", border: "none", color: "white", borderRadius: 8 },
+  container: {
+    background: "#0b1120",
+    color: "white",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    padding: 10,
+  },
+
+  avatarBox: {
+    display: "flex",
+    justifyContent: "center",
+    margin: 10,
+  },
+
+  avatar: {
+    fontSize: 50,
+    transition: "0.3s",
+  },
+
+  startBtn: {
+    margin: "10px auto",
+    padding: 10,
+    background: "#2563eb",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+  },
+
+  chat: {
+    flex: 1,
+    overflowY: "auto",
+    padding: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+
+  msg: {
+    padding: 12,
+    borderRadius: 10,
+    maxWidth: "70%",
+  },
+
+  inputBox: {
+    display: "flex",
+    padding: 10,
+    background: "#020617",
+    position: "sticky",
+    bottom: 0,
+  },
+
+  input: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    border: "none",
+  },
+
+  sendBtn: {
+    marginLeft: 10,
+    padding: "0 15px",
+    background: "#2563eb",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+  },
+
+  micBtn: {
+    marginLeft: 5,
+    padding: "0 10px",
+    background: "#111827",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+  },
+
+  stopBtn: {
+    marginLeft: 5,
+    padding: "0 10px",
+    background: "#dc2626",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+  },
+
+  clearBtn: {
+    marginLeft: 5,
+    padding: "0 10px",
+    background: "#374151",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+  },
 };
 
 export default App;
