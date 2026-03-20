@@ -12,8 +12,8 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
 
-  const [typing, setTyping] = useState(false); // 🔹 now used
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
+  const [typing, setTyping] = useState(false);
   const [listening, setListening] = useState(false);
 
   const chatEndRef = useRef(null);
@@ -27,6 +27,7 @@ function App() {
   // 🎧 VOICE + AVATAR
   const speak = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
+
     setAvatarSpeaking(true);
 
     utterance.onend = () => {
@@ -43,24 +44,19 @@ function App() {
 
     for (let i = 0; i < text.length; i++) {
       displayed += text[i];
-      const temp = displayed; // 🔹 Fix ESLint no-loop-func
 
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === "ai_typing") {
-          return [...prev.slice(0, -1), { role: "ai_typing", text: temp }];
+          return [...prev.slice(0, -1), { role: "ai_typing", text: displayed }];
         }
-        return [...prev, { role: "ai_typing", text: temp }];
+        return [...prev, { role: "ai_typing", text: displayed }];
       });
 
       await new Promise((res) => setTimeout(res, 15));
     }
 
-    setMessages((prev) => [
-      ...prev.slice(0, -1),
-      { role: "ai", text },
-    ]);
-
+    setMessages((prev) => [...prev.slice(0, -1), { role: "ai", text }]);
     setTyping(false);
     speak(text);
   };
@@ -68,23 +64,38 @@ function App() {
   // 📄 UPLOAD CV
   const handleUpload = async (e) => {
     const file = e.target.files[0];
+    if (!file) return;
+
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await axios.post(`${API}/upload-cv`, formData);
-    setCvText(res.data.cv_text);
-
-    alert("✅ CV uploaded!");
+    try {
+      const res = await axios.post(`${API}/upload-cv`, formData);
+      setCvText(res.data.cv_text);
+      alert("✅ CV uploaded!");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error uploading CV");
+    }
   };
 
   // 🚀 START INTERVIEW
   const startInterview = async () => {
-    const res = await axios.post(`${API}/questions`, { cv_text: cvText });
+    if (!cvText) {
+      alert("Please upload your CV first.");
+      return;
+    }
 
-    setQuestions(res.data.questions);
-    setCurrentIndex(0);
+    try {
+      const res = await axios.post(`${API}/questions`, { cv_text: cvText });
+      setQuestions(res.data.questions);
+      setCurrentIndex(0);
 
-    await typeMessage(res.data.questions[0]);
+      await typeMessage(res.data.questions[0]);
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error starting interview");
+    }
   };
 
   // 💬 SEND ANSWER
@@ -94,29 +105,31 @@ function App() {
     const updatedAnswers = [...answers, input];
     setAnswers(updatedAnswers);
     setMessages((prev) => [...prev, { role: "user", text: input }]);
-
-    const res = await axios.post(`${API}/evaluate`, { answer: input });
-    await typeMessage(res.data.feedback);
-
-    const nextIndex = currentIndex + 1;
-
-    if (nextIndex < questions.length) {
-      setCurrentIndex(nextIndex);
-      await typeMessage(questions[nextIndex]);
-    } else {
-      const final = await axios.post(`${API}/final`, { answers: updatedAnswers });
-      await typeMessage("📊 FINAL REPORT");
-      await typeMessage(final.data.result);
-    }
-
     setInput("");
+
+    try {
+      const res = await axios.post(`${API}/evaluate`, { answer: input });
+      await typeMessage(res.data.feedback);
+
+      const nextIndex = currentIndex + 1;
+
+      if (nextIndex < questions.length) {
+        setCurrentIndex(nextIndex);
+        await typeMessage(questions[nextIndex]);
+      } else {
+        const final = await axios.post(`${API}/final`, { answers: updatedAnswers });
+        await typeMessage("📊 FINAL REPORT");
+        await typeMessage(final.data.result);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error sending message");
+    }
   };
 
   // 🎤 START MICRO
   const startListening = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition not supported");
       return;
@@ -147,9 +160,7 @@ function App() {
   };
 
   // 🗑 CLEAR INPUT
-  const clearInput = () => {
-    setInput("");
-  };
+  const clearInput = () => setInput("");
 
   return (
     <div style={styles.container}>
@@ -157,22 +168,14 @@ function App() {
 
       {/* 🎥 AVATAR */}
       <div style={styles.avatarBox}>
-        <div
-          style={{
-            ...styles.avatar,
-            transform: avatarSpeaking ? "scale(1.2)" : "scale(1)",
-          }}
-        >
+        <div style={{ ...styles.avatar, transform: avatarSpeaking ? "scale(1.2)" : "scale(1)" }}>
           🤖
         </div>
       </div>
 
       {/* 📄 CV */}
       <input type="file" onChange={handleUpload} style={{ margin: 10 }} />
-
-      <button onClick={startInterview} style={styles.startBtn}>
-        Start Interview
-      </button>
+      <button onClick={startInterview} style={styles.startBtn}>Start Interview</button>
 
       {/* 💬 CHAT */}
       <div style={styles.chat}>
@@ -188,6 +191,9 @@ function App() {
             {msg.text}
           </div>
         ))}
+
+        {typing && <div style={{ color: "#9ca3af", fontStyle: "italic" }}>AI is typing...</div>}
+
         <div ref={chatEndRef} />
       </div>
 
@@ -201,122 +207,31 @@ function App() {
         />
 
         {!listening ? (
-          <button onClick={startListening} style={styles.micBtn}>
-            🎤
-          </button>
+          <button onClick={startListening} style={styles.micBtn}>🎤</button>
         ) : (
-          <button onClick={stopListening} style={styles.stopBtn}>
-            ⏹
-          </button>
+          <button onClick={stopListening} style={styles.stopBtn}>⏹</button>
         )}
 
-        <button onClick={clearInput} style={styles.clearBtn}>
-          ❌
-        </button>
-
-        <button onClick={sendMessage} style={styles.sendBtn}>
-          ➤
-        </button>
+        <button onClick={clearInput} style={styles.clearBtn}>❌</button>
+        <button onClick={sendMessage} style={styles.sendBtn}>➤</button>
       </div>
     </div>
   );
 }
 
 const styles = {
-  container: {
-    background: "#0b1120",
-    color: "white",
-    height: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    padding: 10,
-  },
-
-  avatarBox: {
-    display: "flex",
-    justifyContent: "center",
-    margin: 10,
-  },
-
-  avatar: {
-    fontSize: 50,
-    transition: "0.3s",
-  },
-
-  startBtn: {
-    margin: "10px auto",
-    padding: 10,
-    background: "#2563eb",
-    border: "none",
-    color: "white",
-    borderRadius: 8,
-  },
-
-  chat: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 10,
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-
-  msg: {
-    padding: 12,
-    borderRadius: 10,
-    maxWidth: "70%",
-  },
-
-  inputBox: {
-    display: "flex",
-    padding: 10,
-    background: "#020617",
-    position: "sticky",
-    bottom: 0,
-  },
-
-  input: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    border: "none",
-  },
-
-  sendBtn: {
-    marginLeft: 10,
-    padding: "0 15px",
-    background: "#2563eb",
-    border: "none",
-    color: "white",
-    borderRadius: 8,
-  },
-
-  micBtn: {
-    marginLeft: 5,
-    padding: "0 10px",
-    background: "#111827",
-    border: "none",
-    color: "white",
-    borderRadius: 8,
-  },
-
-  stopBtn: {
-    marginLeft: 5,
-    padding: "0 10px",
-    background: "#dc2626",
-    border: "none",
-    color: "white",
-    borderRadius: 8,
-  },
-
-  clearBtn: {
-    marginLeft: 5,
-    padding: "0 10px",
-    background: "#374151",
-    border: "none",
-    color: "white",
-    borderRadius: 8,
-  },
+  container: { background: "#0b1120", color: "white", height: "100vh", display: "flex", flexDirection: "column", padding: 10 },
+  avatarBox: { display: "flex", justifyContent: "center", margin: 10 },
+  avatar: { fontSize: 50, transition: "0.3s" },
+  startBtn: { margin: "10px auto", padding: 10, background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
+  chat: { flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 10 },
+  msg: { padding: 12, borderRadius: 10, maxWidth: "70%" },
+  inputBox: { display: "flex", padding: 10, background: "#020617", position: "sticky", bottom: 0 },
+  input: { flex: 1, padding: 10, borderRadius: 8, border: "none" },
+  sendBtn: { marginLeft: 10, padding: "0 15px", background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
+  micBtn: { marginLeft: 5, padding: "0 10px", background: "#111827", border: "none", color: "white", borderRadius: 8 },
+  stopBtn: { marginLeft: 5, padding: "0 10px", background: "#dc2626", border: "none", color: "white", borderRadius: 8 },
+  clearBtn: { marginLeft: 5, padding: "0 10px", background: "#374151", border: "none", color: "white", borderRadius: 8 },
 };
 
 export default App;
