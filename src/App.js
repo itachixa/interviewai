@@ -29,6 +29,7 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -73,8 +74,7 @@ function App() {
   };
 
   // Handle CV upload
-  const handleUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleUpload = async (file) => {
     if (!file) return;
 
     // Validate file type
@@ -111,6 +111,37 @@ function App() {
       alert(`❌ ${errorMessage}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Handle file input change
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleUpload(file);
+    }
+  };
+
+  // Handle drag and drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleUpload(files[0]);
     }
   };
 
@@ -343,27 +374,39 @@ function App() {
           </div>
           
           <div className="upload-content">
-            <label className={`upload-box ${cvText ? "has-file" : ""} ${uploading ? "uploading" : ""}`}>
+            <label 
+              className={`upload-box ${cvText ? "has-file" : ""} ${uploading ? "uploading" : ""} ${dragOver ? "drag-over" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 accept=".pdf"
-                onChange={handleUpload}
+                onChange={handleFileChange}
                 className="hidden-input"
                 id="file-upload"
                 disabled={uploading}
               />
               <div className="upload-icon">
-                {uploading ? "⏳" : cvText ? "✅" : "📎"}
+                {uploading ? (
+                  <div className="upload-spinner"></div>
+                ) : cvText ? "✅" : "📄"}
               </div>
               <div className="upload-text">
                 {uploading ? (
-                  <>Uploading <strong>CV...</strong></>
+                  <span className="uploading-text">Processing <strong>CV...</strong></span>
                 ) : cvText ? (
-                  <>CV <strong>Uploaded Successfully!</strong></>
+                  <><span className="success-text">✓ CV Uploaded Successfully!</span></>
                 ) : (
-                  <>Click to upload <strong>CV</strong> (PDF only, max 10MB)</>
+                  <><span className="drag-text">Drag & drop your CV here</span><span className="or-text">or click to browse</span><span className="format-text">(PDF only, max 10MB)</span></>
                 )}
               </div>
+              {cvText && !uploading && (
+                <div className="file-info">
+                  <span className="file-name">📎 CV uploaded</span>
+                </div>
+              )}
             </label>
             
             <div className="button-group">
