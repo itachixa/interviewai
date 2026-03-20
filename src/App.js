@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import "./App.css";
 
 function App() {
   // Backend API URL
@@ -15,6 +16,7 @@ function App() {
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
   const [typing, setTyping] = useState(false);
   const [listening, setListening] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -66,7 +68,6 @@ function App() {
     try {
       const res = await axios.post(`${API}upload-cv`, formData);
       setCvText(res.data.cv_text);
-      alert("✅ CV uploaded!");
     } catch (err) {
       console.error(err);
       alert("❌ Error uploading CV");
@@ -78,6 +79,7 @@ function App() {
       alert("Please upload your CV first.");
       return;
     }
+    setHasStarted(true);
     try {
       const res = await axios.post(`${API}questions`, { cv_text: cvText });
       setQuestions(res.data.questions);
@@ -143,63 +145,172 @@ function App() {
 
   const clearInput = () => setInput("");
 
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
+
   return (
-    <div style={styles.container}>
-      <h1>🤖 AI Interviewer</h1>
-
-      <div style={styles.avatarBox}>
-        <div style={{ ...styles.avatar, transform: avatarSpeaking ? "scale(1.2)" : "scale(1)" }}>🤖</div>
-      </div>
-
-      <input type="file" onChange={handleUpload} style={{ margin: 10 }} />
-      <button onClick={startInterview} style={styles.startBtn}>Start Interview</button>
-
-      <div style={styles.chat}>
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            style={{
-              ...styles.msg,
-              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              background: msg.role === "user" ? "#2563eb" : "#1f2937",
-            }}
-          >
-            {msg.text}
+    <div className="App">
+      {/* Header */}
+      <header className="app-header">
+        <div className="app-logo">
+          <div className="app-logo-icon">🤖</div>
+          <div>
+            <h1 className="app-title">AI Interviewer</h1>
+            <p className="app-subtitle">Practice makes perfect</p>
           </div>
-        ))}
+        </div>
+      </header>
 
-        {typing && <div style={{ color: "#9ca3af", fontStyle: "italic" }}>AI is typing...</div>}
+      <main className="main-content">
+        {/* Upload Section */}
+        <section className="upload-section">
+          <h2>📄 Upload Your CV to Begin</h2>
+          <div className="upload-content">
+            <label className={`upload-box ${cvText ? "has-file" : ""}`}>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={handleUpload}
+                className="hidden-input"
+                id="file-upload"
+              />
+              <div className="upload-icon">{cvText ? "✅" : "📎"}</div>
+              <div className="upload-text">
+                {cvText ? (
+                  <>CV <strong>Uploaded Successfully!</strong></>
+                ) : (
+                  <>Click to upload <strong>CV</strong> (PDF, DOC, TXT)</>
+                )}
+              </div>
+            </label>
+            <button
+              className="btn btn-primary"
+              onClick={startInterview}
+              disabled={!cvText}
+            >
+              🚀 {hasStarted ? "Restart Interview" : "Start Interview"}
+            </button>
+          </div>
+        </section>
 
-        <div ref={chatEndRef} />
-      </div>
-
-      <div style={styles.inputBox}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} style={styles.input} placeholder="Type or speak..." />
-        {!listening ? (
-          <button onClick={startListening} style={styles.micBtn}>🎤</button>
+        {/* Interview Section */}
+        {!hasStarted ? (
+          <div className="welcome-screen">
+            <div className="welcome-icon">🎯</div>
+            <h2 className="welcome-title">Ready to Practice?</h2>
+            <p className="welcome-subtitle">
+              Upload your CV and start practicing interview questions. 
+              Get real-time feedback and improve your responses.
+            </p>
+          </div>
         ) : (
-          <button onClick={stopListening} style={styles.stopBtn}>⏹</button>
+          <section className="interview-section">
+            {/* Avatar Panel */}
+            <aside className="avatar-panel">
+              <div className={`avatar-container ${avatarSpeaking ? "speaking" : ""}`}>
+                <span className="avatar-emoji">🤖</span>
+              </div>
+              <p className={`avatar-status ${avatarSpeaking ? "active" : ""}`}>
+                {avatarSpeaking ? "Speaking..." : "Listening"}
+              </p>
+              
+              <div className="question-progress">
+                <p className="progress-text">
+                  Question {currentIndex + 1} of {questions.length || "?"}
+                </p>
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            </aside>
+
+            {/* Chat Container */}
+            <div className="chat-container">
+              <div className="chat-header">
+                <span className="chat-header-title">💬 Interview Chat</span>
+                {typing && (
+                  <div className="typing-indicator">
+                    <span>AI is typing</span>
+                    <span className="typing-dot"></span>
+                    <span className="typing-dot"></span>
+                    <span className="typing-dot"></span>
+                  </div>
+                )}
+              </div>
+
+              <div className="chat-messages">
+                {messages.length === 0 && (
+                  <div className="message message-ai">
+                    Hello! I'm your AI interviewer. I'll ask you questions based on your CV, 
+                    and you can answer by typing or speaking. Let's begin!
+                  </div>
+                )}
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`message ${
+                      msg.role === "user"
+                        ? "message-user"
+                        : msg.role === "system"
+                        ? "message-system"
+                        : "message-ai"
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div className="input-area">
+                <div className="input-wrapper">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="message-input"
+                    placeholder="Type your answer..."
+                    disabled={typing}
+                  />
+                </div>
+                <button
+                  className={`input-btn btn-mic ${listening ? "active" : ""}`}
+                  onClick={listening ? stopListening : startListening}
+                  title={listening ? "Stop listening" : "Start voice input"}
+                >
+                  {listening ? "🔴" : "🎤"}
+                </button>
+                <button
+                  className="input-btn btn-clear"
+                  onClick={clearInput}
+                  title="Clear input"
+                >
+                  ✕
+                </button>
+                <button
+                  className="input-btn btn-send"
+                  onClick={sendMessage}
+                  disabled={!input || typing}
+                  title="Send answer"
+                >
+                  ➤
+                </button>
+              </div>
+            </div>
+          </section>
         )}
-        <button onClick={clearInput} style={styles.clearBtn}>❌</button>
-        <button onClick={sendMessage} style={styles.sendBtn}>➤</button>
-      </div>
+      </main>
     </div>
   );
 }
-
-const styles = {
-  container: { background: "#0b1120", color: "white", height: "100vh", display: "flex", flexDirection: "column", padding: 10 },
-  avatarBox: { display: "flex", justifyContent: "center", margin: 10 },
-  avatar: { fontSize: 50, transition: "0.3s" },
-  startBtn: { margin: "10px auto", padding: 10, background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
-  chat: { flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 10 },
-  msg: { padding: 12, borderRadius: 10, maxWidth: "70%" },
-  inputBox: { display: "flex", padding: 10, background: "#020617", position: "sticky", bottom: 0 },
-  input: { flex: 1, padding: 10, borderRadius: 8, border: "none" },
-  sendBtn: { marginLeft: 10, padding: "0 15px", background: "#2563eb", border: "none", color: "white", borderRadius: 8 },
-  micBtn: { marginLeft: 5, padding: "0 10px", background: "#111827", border: "none", color: "white", borderRadius: 8 },
-  stopBtn: { marginLeft: 5, padding: "0 10px", background: "#dc2626", border: "none", color: "white", borderRadius: 8 },
-  clearBtn: { marginLeft: 5, padding: "0 10px", background: "#374151", border: "none", color: "white", borderRadius: 8 },
-};
 
 export default App;
