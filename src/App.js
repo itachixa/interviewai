@@ -3,20 +3,32 @@ import axios from "axios";
 import "./App.css";
 
 function App() {
-  // Backend API URL
-  // Use localhost for development, Render for production
-  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-gbkc.onrender.com/";
+  // Backend API URL - configure via environment variable
+  const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
+  // State
   const [cvText, setCvText] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
+  const [evaluations, setEvaluations] = useState([]);
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
   const [typing, setTyping] = useState(false);
   const [listening, setListening] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [finalResults, setFinalResults] = useState(null);
+  
+  // Configuration
+  const [jobLevel, setJobLevel] = useState("intermediate");
+  const [role, setRole] = useState("General");
+  
+  // Loading states
+  const [uploading, setUploading] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -25,14 +37,16 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Text to speech
   const speak = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
     setAvatarSpeaking(true);
     utterance.onend = () => setAvatarSpeaking(false);
+    utterance.rate = 0.9;
     speechSynthesis.speak(utterance);
   };
 
-  // 🔹 TYPE MESSAGE SAFE LOOP
+  // Type message with animation
   const typeMessage = async (text) => {
     setTyping(true);
     let displayed = "";
@@ -58,69 +72,176 @@ function App() {
     speak(text);
   };
 
+  // Handle CV upload
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert("❌ Please upload a PDF file");
+      return;
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      alert("❌ File too large. Maximum size is 10MB");
+      return;
+    }
+
+    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await axios.post(`${API}upload-cv`, formData);
-      setCvText(res.data.cv_text);
+      const res = await axios.post(`${API}/upload-cv`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      
+      if (res.data.success) {
+        setCvText(res.data.cv_text);
+        setMessages([{ 
+          role: "system", 
+          text: "✅ CV uploaded successfully! Select your target job level and role, then start the interview." 
+        }]);
+      }
     } catch (err) {
       console.error(err);
-      alert("❌ Error uploading CV");
+      const errorMessage = err.response?.data?.detail || "Error uploading CV";
+      alert(`❌ ${errorMessage}`);
+    } finally {
+      setUploading(false);
     }
   };
 
+  // Start interview
   const startInterview = async () => {
     if (!cvText) {
       alert("Please upload your CV first.");
       return;
     }
+    
     setHasStarted(true);
+    setShowResults(false);
+    setFinalResults(null);
+    setMessages([]);
+    setAnswers([]);
+    setEvaluations([]);
+    setCurrentIndex(0);
+    
+    setLoadingQuestions(true);
+    
     try {
-      const res = await axios.post(`${API}questions`, { cv_text: cvText });
+      const res = await axios.post(`${API}/questions`, { 
+        cv_text: cvText,
+        level: jobLevel,
+        role: role
+      });
+      
       setQuestions(res.data.questions);
-      setCurrentIndex(0);
-      await typeMessage(res.data.questions[0]);
+      
+      // Add initial message
+      setMessages([{
+        role: "ai",
+        text: `Hello! I'm your AI interviewer. I'll ask you ${res.data.questions.length} questions based on your CV for a ${jobLevel} level ${role} position. Let's begin!`
+      }]);
+      
+      // Ask first question after a brief delay
+      setTimeout(async () => {
+        setLoadingQuestions(false);
+        await typeMessage(res.data.questions[0]);
+      }, 500);
+      
     } catch (err) {
       console.error(err);
-      alert("❌ Error starting interview");
+      alert("❌ Error generating questions");
+      setLoadingQuestions(false);
+      setHasStarted(false);
     }
   };
 
+  // Submit answer
   const sendMessage = async () => {
-    if (!input) return;
+    if (!input.trim()) return;
+    if (submitting || typing) return;
 
-    const updatedAnswers = [...answers, input];
+    const userAnswer = input.trim();
+    const currentQuestion = questions[currentIndex];
+    
+    setSubmitting(true);
+    
+    // Add user answer to messages
+    const updatedAnswers = [...answers, userAnswer];
     setAnswers(updatedAnswers);
-    setMessages((prev) => [...prev, { role: "user", text: input }]);
+    setMessages((prev) => [...prev, { role: "user", text: userAnswer }]);
     setInput("");
 
     try {
-      const res = await axios.post(`${API}evaluate`, { answer: input });
-      await typeMessage(res.data.feedback);
+      // Evaluate the answer
+      const res = await axios.post(`${API}/evaluate`, { 
+        answer: userAnswer,
+        question: currentQuestion
+      });
+      
+      const evaluation = res.data;
+      setEvaluations(prev => [...prev, evaluation]);
+      
+      // Show feedback
+      await typeMessage(evaluation.feedback);
 
+      // Check if there are more questions
       const nextIndex = currentIndex + 1;
+      
       if (nextIndex < questions.length) {
         setCurrentIndex(nextIndex);
-        await typeMessage(questions[nextIndex]);
+        
+        // Ask next question after feedback
+        setTimeout(async () => {
+          await typeMessage(questions[nextIndex]);
+        }, 1500);
       } else {
-        const final = await axios.post(`${API}final`, { answers: updatedAnswers });
-        await typeMessage("📊 FINAL REPORT");
-        await typeMessage(final.data.result);
+        // All questions answered - get final evaluation
+        setTimeout(async () => {
+          await getFinalEvaluation(updatedAnswers);
+        }, 1500);
       }
+      
     } catch (err) {
       console.error(err);
-      alert("❌ Error sending message");
+      alert("❌ Error evaluating answer");
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  // Get final evaluation
+  const getFinalEvaluation = async (allAnswers) => {
+    try {
+      const res = await axios.post(`${API}/final`, { 
+        answers: allAnswers,
+        questions: questions
+      });
+      
+      setFinalResults(res.data);
+      setShowResults(true);
+      
+      // Show final report
+      await typeMessage("📊 FINAL INTERVIEW REPORT");
+      await typeMessage(res.data.detailed_report);
+      
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error generating final report");
+    }
+  };
+
+  // Voice recognition
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return alert("Speech recognition not supported");
+    if (!SpeechRecognition) {
+      alert("Speech recognition not supported in this browser");
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -131,6 +252,11 @@ function App() {
       const results = Array.from(event.results);
       const transcript = results.map((result) => result[0].transcript).join("");
       setInput(transcript);
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+      setListening(false);
     };
 
     recognition.start();
@@ -154,6 +280,19 @@ function App() {
 
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
 
+  // Reset interview
+  const resetInterview = () => {
+    setHasStarted(false);
+    setShowResults(false);
+    setFinalResults(null);
+    setQuestions([]);
+    setAnswers([]);
+    setEvaluations([]);
+    setMessages([]);
+    setCurrentIndex(0);
+    setCvText("");
+  };
+
   return (
     <div className="App">
       {/* Header */}
@@ -171,31 +310,71 @@ function App() {
         {/* Upload Section */}
         <section className="upload-section">
           <h2>📄 Upload Your CV to Begin</h2>
+          
+          {/* Level and Role Selection */}
+          <div className="config-section">
+            <div className="config-row">
+              <div className="config-group">
+                <label>Target Job Level:</label>
+                <select 
+                  value={jobLevel} 
+                  onChange={(e) => setJobLevel(e.target.value)}
+                  className="level-select"
+                >
+                  <option value="junior">Junior (0-2 years)</option>
+                  <option value="intermediate">Intermediate (2-5 years)</option>
+                  <option value="senior">Senior (5+ years)</option>
+                  <option value="lead">Lead</option>
+                  <option value="manager">Manager</option>
+                </select>
+              </div>
+              
+              <div className="config-group">
+                <label>Position/Role:</label>
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="e.g., Software Engineer, Product Manager"
+                  className="role-input"
+                />
+              </div>
+            </div>
+          </div>
+          
           <div className="upload-content">
-            <label className={`upload-box ${cvText ? "has-file" : ""}`}>
+            <label className={`upload-box ${cvText ? "has-file" : ""} ${uploading ? "uploading" : ""}`}>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf"
                 onChange={handleUpload}
                 className="hidden-input"
                 id="file-upload"
+                disabled={uploading}
               />
-              <div className="upload-icon">{cvText ? "✅" : "📎"}</div>
+              <div className="upload-icon">
+                {uploading ? "⏳" : cvText ? "✅" : "📎"}
+              </div>
               <div className="upload-text">
-                {cvText ? (
+                {uploading ? (
+                  <>Uploading <strong>CV...</strong></>
+                ) : cvText ? (
                   <>CV <strong>Uploaded Successfully!</strong></>
                 ) : (
-                  <>Click to upload <strong>CV</strong> (PDF, DOC, TXT)</>
+                  <>Click to upload <strong>CV</strong> (PDF only, max 10MB)</>
                 )}
               </div>
             </label>
-            <button
-              className="btn btn-primary"
-              onClick={startInterview}
-              disabled={!cvText}
-            >
-              🚀 {hasStarted ? "Restart Interview" : "Start Interview"}
-            </button>
+            
+            <div className="button-group">
+              <button
+                className="btn btn-primary"
+                onClick={hasStarted ? resetInterview : startInterview}
+                disabled={!cvText || loadingQuestions || uploading}
+              >
+                {hasStarted ? "🔄 Restart Interview" : "🚀 Start Interview"}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -205,9 +384,28 @@ function App() {
             <div className="welcome-icon">🎯</div>
             <h2 className="welcome-title">Ready to Practice?</h2>
             <p className="welcome-subtitle">
-              Upload your CV and start practicing interview questions. 
+              Upload your CV, select your target level, and start practicing interview questions. 
               Get real-time feedback and improve your responses.
             </p>
+            
+            {/* Features */}
+            <div className="features-grid">
+              <div className="feature-card">
+                <span className="feature-icon">📄</span>
+                <h3>CV Analysis</h3>
+                <p>Questions tailored to your experience</p>
+              </div>
+              <div className="feature-card">
+                <span className="feature-icon">💬</span>
+                <h3>Real-time Feedback</h3>
+                <p>Get instant evaluation after each answer</p>
+              </div>
+              <div className="feature-card">
+                <span className="feature-icon">📊</span>
+                <h3>Final Report</h3>
+                <p>Comprehensive analysis with recommendations</p>
+              </div>
+            </div>
           </div>
         ) : (
           <section className="interview-section">
@@ -222,15 +420,35 @@ function App() {
               
               <div className="question-progress">
                 <p className="progress-text">
-                  Question {currentIndex + 1} of {questions.length || "?"}
+                  Question {showResults ? questions.length : currentIndex + 1} of {questions.length}
                 </p>
                 <div className="progress-bar">
                   <div 
                     className="progress-fill" 
-                    style={{ width: `${progress}%` }}
+                    style={{ width: showResults ? "100%" : `${progress}%` }}
                   />
                 </div>
               </div>
+              
+              {/* Current evaluation display */}
+              {evaluations.length > 0 && !showResults && (
+                <div className="current-score">
+                  <p>Last Answer Score</p>
+                  <div className="score-ring">
+                    <span className="score-value">{evaluations[evaluations.length - 1]?.score || 0}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Final results button */}
+              {showResults && finalResults && (
+                <div className="final-score-display">
+                  <p>Final Score</p>
+                  <div className="score-ring large">
+                    <span className="score-value">{finalResults.overall_score}</span>
+                  </div>
+                </div>
+              )}
             </aside>
 
             {/* Chat Container */}
@@ -248,12 +466,19 @@ function App() {
               </div>
 
               <div className="chat-messages">
-                {messages.length === 0 && (
+                {messages.length === 0 && !loadingQuestions && (
                   <div className="message message-ai">
                     Hello! I'm your AI interviewer. I'll ask you questions based on your CV, 
                     and you can answer by typing or speaking. Let's begin!
                   </div>
                 )}
+                
+                {loadingQuestions && (
+                  <div className="message message-system">
+                    ⏳ Generating personalized questions based on your CV...
+                  </div>
+                )}
+                
                 {messages.map((msg, i) => (
                   <div
                     key={i}
@@ -271,40 +496,103 @@ function App() {
                 <div ref={chatEndRef} />
               </div>
 
-              <div className="input-area">
-                <div className="input-wrapper">
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="message-input"
-                    placeholder="Type your answer..."
-                    disabled={typing}
-                  />
+              {/* Input Area - Hidden during results */}
+              {!showResults && (
+                <div className="input-area">
+                  <div className="input-wrapper">
+                    <input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="message-input"
+                      placeholder="Type your answer..."
+                      disabled={typing || submitting || loadingQuestions}
+                    />
+                  </div>
+                  <button
+                    className={`input-btn btn-mic ${listening ? "active" : ""}`}
+                    onClick={listening ? stopListening : startListening}
+                    title={listening ? "Stop listening" : "Start voice input"}
+                    disabled={typing || submitting}
+                  >
+                    {listening ? "🔴" : "🎤"}
+                  </button>
+                  <button
+                    className="input-btn btn-clear"
+                    onClick={clearInput}
+                    title="Clear input"
+                    disabled={typing || submitting}
+                  >
+                    ✕
+                  </button>
+                  <button
+                    className="input-btn btn-send"
+                    onClick={sendMessage}
+                    disabled={!input.trim() || typing || submitting || loadingQuestions}
+                    title="Send answer"
+                  >
+                    {submitting ? "⏳" : "➤"}
+                  </button>
                 </div>
-                <button
-                  className={`input-btn btn-mic ${listening ? "active" : ""}`}
-                  onClick={listening ? stopListening : startListening}
-                  title={listening ? "Stop listening" : "Start voice input"}
-                >
-                  {listening ? "🔴" : "🎤"}
-                </button>
-                <button
-                  className="input-btn btn-clear"
-                  onClick={clearInput}
-                  title="Clear input"
-                >
-                  ✕
-                </button>
-                <button
-                  className="input-btn btn-send"
-                  onClick={sendMessage}
-                  disabled={!input || typing}
-                  title="Send answer"
-                >
-                  ➤
-                </button>
-              </div>
+              )}
+              
+              {/* Results Summary */}
+              {showResults && finalResults && (
+                <div className="results-summary">
+                  <div className="results-header">
+                    <h3>📊 Interview Complete!</h3>
+                    <button className="btn btn-secondary" onClick={resetInterview}>
+                      Start New Interview
+                    </button>
+                  </div>
+                  
+                  <div className="results-grid">
+                    <div className="result-card">
+                      <h4>Overall Score</h4>
+                      <div className="big-score">{finalResults.overall_score}/100</div>
+                    </div>
+                    <div className="result-card">
+                      <h4>Fluency</h4>
+                      <div className="sub-score">{finalResults.average_scores.fluency}/100</div>
+                    </div>
+                    <div className="result-card">
+                      <h4>Confidence</h4>
+                      <div className="sub-score">{finalResults.average_scores.confidence}/100</div>
+                    </div>
+                    <div className="result-card">
+                      <h4>Accuracy</h4>
+                      <div className="sub-score">{finalResults.average_scores.correctness}/100</div>
+                    </div>
+                  </div>
+                  
+                  {finalResults.strengths.length > 0 && (
+                    <div className="result-section">
+                      <h4>✅ Strengths</h4>
+                      <ul>
+                        {finalResults.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {finalResults.areas_for_improvement.length > 0 && (
+                    <div className="result-section">
+                      <h4>⚠️ Areas for Improvement</h4>
+                      <ul>
+                        {finalResults.areas_for_improvement.map((a, i) => <li key={i}>{a}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {finalResults.recommendations.length > 0 && (
+                    <div className="result-section">
+                      <h4>💡 Recommendations</h4>
+                      <ul>
+                        {finalResults.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         )}
