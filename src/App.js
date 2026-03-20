@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 function App() {
+  // Backend API URL - hardcoded for production
   const API = "https://ai-interviewer-backend-7gxf.onrender.com/";
 
   const [cvText, setCvText] = useState("");
@@ -62,7 +63,7 @@ function App() {
     formData.append("file", file);
 
     try {
-      const res = await axios.post(`${API}/upload-cv`, formData);
+      const res = await axios.post(`${API}upload-cv`, formData);
       setCvText(res.data.cv_text);
       alert("✅ CV uploaded!");
     } catch (err) {
@@ -77,7 +78,7 @@ function App() {
       return;
     }
     try {
-      const res = await axios.post(`${API}/questions`, { cv_text: cvText });
+      const res = await axios.post(`${API}questions`, { cv_text: cvText });
       setQuestions(res.data.questions);
       setCurrentIndex(0);
       await typeMessage(res.data.questions[0]);
@@ -96,7 +97,7 @@ function App() {
     setInput("");
 
     try {
-      const res = await axios.post(`${API}/evaluate`, { answer: input });
+      const res = await axios.post(`${API}evaluate`, { answer: input });
       await typeMessage(res.data.feedback);
 
       const nextIndex = currentIndex + 1;
@@ -104,7 +105,7 @@ function App() {
         setCurrentIndex(nextIndex);
         await typeMessage(questions[nextIndex]);
       } else {
-        const final = await axios.post(`${API}/final`, { answers: updatedAnswers });
+        const final = await axios.post(`${API}final`, { answers: updatedAnswers });
         await typeMessage("📊 FINAL REPORT");
         await typeMessage(final.data.result);
       }
@@ -124,8 +125,8 @@ function App() {
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      let transcript = "";
-      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+      const results = Array.from(event.results);
+      const transcript = results.map((result) => result[0].transcript).join("");
       setInput(transcript);
     };
 
