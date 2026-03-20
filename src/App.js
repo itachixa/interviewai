@@ -4,7 +4,7 @@ import "./App.css";
 
 function App() {
   // Backend API URL - configure via environment variable
-  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-gbkc.onrender.com/";
+  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-gbkc.onrender.com";
 
   // State
   const [cvText, setCvText] = useState("");
