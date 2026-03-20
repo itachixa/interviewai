@@ -7,11 +7,9 @@ function App() {
   const [cvText, setCvText] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
-
   const [avatarSpeaking, setAvatarSpeaking] = useState(false);
   const [typing, setTyping] = useState(false);
   const [listening, setListening] = useState(false);
@@ -19,40 +17,35 @@ function App() {
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  // 🔽 AUTO SCROLL
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🎧 VOICE + AVATAR
   const speak = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
-
     setAvatarSpeaking(true);
-
-    utterance.onend = () => {
-      setAvatarSpeaking(false);
-    };
-
+    utterance.onend = () => setAvatarSpeaking(false);
     speechSynthesis.speak(utterance);
   };
 
-  // ✨ TYPE EFFECT
+  // 🔹 TYPE MESSAGE SAFE LOOP
   const typeMessage = async (text) => {
     setTyping(true);
     let displayed = "";
 
-    for (let i = 0; i < text.length; i++) {
-      displayed += text[i];
-
+    const updateMessage = (currentText) => {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === "ai_typing") {
-          return [...prev.slice(0, -1), { role: "ai_typing", text: displayed }];
+          return [...prev.slice(0, -1), { role: "ai_typing", text: currentText }];
         }
-        return [...prev, { role: "ai_typing", text: displayed }];
+        return [...prev, { role: "ai_typing", text: currentText }];
       });
+    };
 
+    for (let i = 0; i < text.length; i++) {
+      displayed += text[i];
+      updateMessage(displayed);
       await new Promise((res) => setTimeout(res, 15));
     }
 
@@ -61,7 +54,6 @@ function App() {
     speak(text);
   };
 
-  // 📄 UPLOAD CV
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -79,18 +71,15 @@ function App() {
     }
   };
 
-  // 🚀 START INTERVIEW
   const startInterview = async () => {
     if (!cvText) {
       alert("Please upload your CV first.");
       return;
     }
-
     try {
       const res = await axios.post(`${API}/questions`, { cv_text: cvText });
       setQuestions(res.data.questions);
       setCurrentIndex(0);
-
       await typeMessage(res.data.questions[0]);
     } catch (err) {
       console.error(err);
@@ -98,7 +87,6 @@ function App() {
     }
   };
 
-  // 💬 SEND ANSWER
   const sendMessage = async () => {
     if (!input) return;
 
@@ -112,7 +100,6 @@ function App() {
       await typeMessage(res.data.feedback);
 
       const nextIndex = currentIndex + 1;
-
       if (nextIndex < questions.length) {
         setCurrentIndex(nextIndex);
         await typeMessage(questions[nextIndex]);
@@ -127,13 +114,9 @@ function App() {
     }
   };
 
-  // 🎤 START MICRO
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition not supported");
-      return;
-    }
+    if (!SpeechRecognition) return alert("Speech recognition not supported");
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -142,9 +125,7 @@ function App() {
 
     recognition.onresult = (event) => {
       let transcript = "";
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
       setInput(transcript);
     };
 
@@ -153,31 +134,24 @@ function App() {
     setListening(true);
   };
 
-  // ⏹ STOP MICRO
   const stopListening = () => {
     recognitionRef.current?.stop();
     setListening(false);
   };
 
-  // 🗑 CLEAR INPUT
   const clearInput = () => setInput("");
 
   return (
     <div style={styles.container}>
       <h1>🤖 AI Interviewer</h1>
 
-      {/* 🎥 AVATAR */}
       <div style={styles.avatarBox}>
-        <div style={{ ...styles.avatar, transform: avatarSpeaking ? "scale(1.2)" : "scale(1)" }}>
-          🤖
-        </div>
+        <div style={{ ...styles.avatar, transform: avatarSpeaking ? "scale(1.2)" : "scale(1)" }}>🤖</div>
       </div>
 
-      {/* 📄 CV */}
       <input type="file" onChange={handleUpload} style={{ margin: 10 }} />
       <button onClick={startInterview} style={styles.startBtn}>Start Interview</button>
 
-      {/* 💬 CHAT */}
       <div style={styles.chat}>
         {messages.map((msg, i) => (
           <div
@@ -197,21 +171,13 @@ function App() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* INPUT FIXED */}
       <div style={styles.inputBox}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          style={styles.input}
-          placeholder="Type or speak..."
-        />
-
+        <input value={input} onChange={(e) => setInput(e.target.value)} style={styles.input} placeholder="Type or speak..." />
         {!listening ? (
           <button onClick={startListening} style={styles.micBtn}>🎤</button>
         ) : (
           <button onClick={stopListening} style={styles.stopBtn}>⏹</button>
         )}
-
         <button onClick={clearInput} style={styles.clearBtn}>❌</button>
         <button onClick={sendMessage} style={styles.sendBtn}>➤</button>
       </div>
