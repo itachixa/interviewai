@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 function App() {
-  // Backend API URL - hardcoded for production
-  const API = "https://ai-interviewer-backend-7gxf.onrender.com/";
+  // Backend API URL
+  // Use localhost for development, Render for production
+  const API = process.env.REACT_APP_API_URL || "https://ai-interviewer-backend-7gxf.onrender.com";
 
   const [cvText, setCvText] = useState("");
   const [messages, setMessages] = useState([]);
